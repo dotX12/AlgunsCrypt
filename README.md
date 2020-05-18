@@ -1,7 +1,9 @@
 # Alguns
 
 Alguns is a symmetric encryption method that contains 2 keys, without which decryption of the message is impossible.
+
 Alguns also uses 128-bit AES in CBC mode and PKCS7 padding. 
+
 Letters and symbols are encrypted using the replacement method generate_replacement. A replacement character for a letter consists of [randomSymbol, randomNumber(0,99), randomSymbol, randomNumber(0,99)].
 A Alguns key as returned by the generate_key actually contains two 16-byte keys:
 A signing key used to sign the HMAC.
