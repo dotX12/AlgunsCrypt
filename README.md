@@ -14,6 +14,9 @@ These two values are concatenated to form a 32 byte value. This 32 byte key is t
 -------------------------
 ##### ```Please note that the ~ character is reserved for the delimiter and cannot be encrypted. This character will be ignored.```
 
+### Supported Languages:
+- Russian
+- English
 
 ###### How generate keys?
 ```python
