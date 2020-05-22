@@ -73,7 +73,7 @@ class Alguns(object):
 
     def crypt(self, *text):
         if text:
-            if self.validate == True:
+            if self.validate is True:
                 text = text[0]
                 message = ""
                 for i in text:
@@ -89,7 +89,7 @@ class Alguns(object):
 
     def decrypt(self, *text):
         if text:
-            if self.validate == True:
+            if self.validate is True:
                 one_decrypt = self.key.decrypt(bytes(text[0], encoding='utf-8')).decode()
                 temp = ""
                 message = ""
