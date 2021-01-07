@@ -30,7 +30,7 @@ replacement = Alguns.generate_replacement()
 mykey = # My key that I created earlier.
 myreplacement = # My replacement that I created earlier.
 al = Alguns(key=mykey, replacement=myreplacement)
-msgcrypt = al.crypt('Hellow it's my message! Привет, это мое сообщение...')
+msgcrypt = al.crypt('Hellow it is my message! Привет, это мое сообщение...')
 print(msgcrypt)
 # gAAAAABewxb_nE1mbHgN7ma79_XAbh68hLblIFdX3czIEmUDCSFWxMXTTEdIU5...
 ```
