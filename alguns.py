@@ -1,108 +1,174 @@
+import base64
+import binascii
+import os
 import random
-from cryptography.fernet import Fernet
-from base64 import b64decode, b64encode
+import six
+import struct
+import time
 from ast import literal_eval
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.hmac import HMAC
+
+from symbols import alphabet, random_letters
+from custom_errors import EmptyMessage, InvalidToken, InvalidReplacement, InvalidKey
+
+
+_MAX_CLOCK_SKEW = 60
 
 
 class Alguns(object):
-
-    def __init__(self, key, replacement):
+    def __init__(self, key, replacement, backend=None):
+        if backend is None:
+            backend = default_backend()
         try:
-            self.key = Fernet(bytes(key, encoding='utf-8'))
-            self.data = literal_eval(b64decode(bytes(replacement, encoding='utf8')).decode('utf-8'))
-            self.validate = Alguns.__isBase64(replacement)
-        except UnicodeDecodeError:
-            raise Exception("Dict it has the wrong format. Recreate it.")
-
-    @staticmethod
-    def __error():
-        raise Exception('You need to pass the value of the dictionary key to the object.\n'
-                        'Example:\n'
-                        'k = Alguns(KEY-DICT)\n'
-                        'print(k.crypt("HELLO WORLD"))\n')
-
-    @staticmethod
-    def __error_bad_base64():
-        raise Exception('Dict it has the wrong format. Recreate it.')
-
-    @staticmethod
-    def __isBase64(sb):
+            key = base64.urlsafe_b64decode(key)
+        except binascii.Error:
+            raise InvalidKey('The key is wrong')
         try:
-            if isinstance(sb, str):
-                # If there's any unicode here, an exception will be thrown and the function will return false
-                sb_bytes = bytes(sb, 'ascii')
-            elif isinstance(sb, bytes):
-                sb_bytes = sb
-            else:
-                raise ValueError("Argument must be string or bytes")
-            return b64encode(b64decode(sb_bytes)) == sb_bytes
-        except Exception:
-            return False
+            self.replacement = literal_eval(base64.b64decode(bytes(replacement, encoding='utf8')).decode('utf-8'))
+        except binascii.Error:
+            raise InvalidReplacement('Replacement it has the wrong format. Recreate it.')
+
+        self._signing_key = key[:16]
+        self._encryption_key = key[16:]
+        self._backend = backend
+
+    @classmethod
+    def generate_key(cls):
+        return base64.urlsafe_b64encode(os.urandom(32)).decode()
 
     @staticmethod
     def __generate_letter():
-        EN_lang = 'ABCDEFGHIGKLMNOPQRSTUVWXYZ'
-        out = ''
-        for _ in range(2):
-            rnd_l = str(random.choice(EN_lang))
-            rnd_n = str(random.randint(1, 99))
-            out = out + rnd_l + rnd_n
-        return out
+        return str(random.choice(random_letters)) + str(random.randint(0, 99))
 
-    @staticmethod
-    def generate_key():
-        return Fernet.generate_key().decode('utf-8')
-
-    @staticmethod
-    def generate_replacement():
-        langs = list('1234567890,!:\*.?/+-@%^*(#)_+${}[]<>; '
-                     'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя'
-                     'ABCDEFGHIGKLMNOPQRSTUVWXYZabcdefghigklmnopqrstuvwxyz')
-
+    @classmethod
+    def generate_replacement(cls):
         dis = {}
-        keysUP = []
-
-        for i in range(len(langs)):
+        keys_up = []
+        for i in range(len(alphabet)):
             ran = Alguns.__generate_letter()
-            if ran not in keysUP:
-                keysUP.append(ran)
-                dis[langs[i]] = str(ran)
-        dict_to_str = f'{dis}'
-        crypted_dict = (b64encode(dict_to_str.encode('UTF-8')).decode())
-        return crypted_dict
+            while ran not in keys_up:
+                keys_up.append(ran)
+                dis[alphabet[i]] = str(ran)
+        dict_to_str = str(dis)
+        crypt_dict = (base64.b64encode(dict_to_str.encode('UTF-8')).decode())
+        return crypt_dict
 
-    def crypt(self, *text):
+    def encrypt(self, data):
+        encrypt_repl = self._e_ncrypt_from_replacement(data)
+        current_time = int(time.time())
+        iv = os.urandom(16)
+        return self.__encrypt_from_parts(encrypt_repl.encode(), current_time, iv).decode()
+
+    def _e_ncrypt_from_replacement(self, text):
         if text:
-            if self.validate is True:
-                text = text[0]
-                message = ""
-                for i in text:
-                    if i in self.data:
-                        message += self.data[i]
-                        message += "~"
-                end_crypt = self.key.encrypt(bytes(message, encoding='utf-8'))
-                return end_crypt.decode()
-            else:
-                raise Alguns.__error_bad_base64()
+            message = ""
+            for i in text:
+                if i in self.replacement:
+                    message += self.replacement[i]
+                    message += "~"
+            return message
         else:
-            raise Alguns.__error()
+            raise EmptyMessage
 
-    def decrypt(self, *text):
-        if text:
-            if self.validate is True:
-                one_decrypt = self.key.decrypt(bytes(text[0], encoding='utf-8')).decode()
+    def __encrypt_from_parts(self, data, current_time, iv):
+        Alguns.__check_bytes("data", data)
+
+        padder = padding.PKCS7(algorithms.AES.block_size).padder()
+        padded_data = padder.update(data) + padder.finalize()
+        encryptor = Cipher(
+            algorithms.AES(self._encryption_key), modes.CBC(iv), self._backend
+        ).encryptor()
+        ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+
+        basic_parts = (
+                b"\x80" + struct.pack(">Q", current_time) + iv + ciphertext
+        )
+
+        h = HMAC(self._signing_key, hashes.SHA256(), backend=self._backend)
+        h.update(basic_parts)
+        hmac = h.finalize()
+        return base64.urlsafe_b64encode(basic_parts + hmac)
+
+    def decrypt(self, token, ttl=None):
+        timestamp, data = Alguns._get_unverified_token_data(token.encode())
+        data = self.__decrypt_data(data, timestamp, ttl).decode()
+        return self.__decrypt_from_replacement(data)
+
+    def __decrypt_from_replacement(self, data):
+        temp, message = '', ''
+        for i in data:
+            if i != "~":
+                temp += i
+            else:
+                for j in self.replacement:
+                    if self.replacement[j] == temp:
+                        message += j
                 temp = ""
-                message = ""
-                for i in one_decrypt:
-                    if i != "~":
-                        temp += i
-                    else:
-                        for j in self.data:
-                            if self.data[j] == temp:
-                                message += j
-                        temp = ""
-                return message
-            else:
-                raise Alguns.__error_bad_base64()
+        if len(message) > 0:
+            return message
         else:
-            raise Alguns.__error()
+            raise EmptyMessage('Error decrypting.')
+
+    @staticmethod
+    def __check_bytes(name, value):
+        if not isinstance(value, bytes):
+            raise TypeError("{} must be bytes".format(name))
+
+    @staticmethod
+    def _get_unverified_token_data(token):
+        Alguns.__check_bytes("token", token)
+        try:
+            data = base64.urlsafe_b64decode(token)
+        except (TypeError, binascii.Error):
+            raise InvalidToken
+
+        if not data or six.indexbytes(data, 0) != 0x80:
+            raise InvalidToken
+
+        try:
+            timestamp, = struct.unpack(">Q", data[1:9])
+        except struct.error:
+            raise InvalidToken
+        return timestamp, data
+
+    def __verify_signature(self, data):
+        h = HMAC(self._signing_key, hashes.SHA256(), backend=self._backend)
+        h.update(data[:-32])
+        try:
+            h.verify(data[-32:])
+        except InvalidSignature:
+            raise InvalidToken
+
+    def __decrypt_data(self, data, timestamp, ttl):
+        current_time = int(time.time())
+        if ttl is not None:
+            if timestamp + ttl < current_time:
+                raise InvalidToken
+
+            if current_time + _MAX_CLOCK_SKEW < timestamp:
+                raise InvalidToken
+
+        self.__verify_signature(data)
+
+        iv = data[9:25]
+        ciphertext = data[25:-32]
+        decryptor = Cipher(
+            algorithms.AES(self._encryption_key), modes.CBC(iv), self._backend
+        ).decryptor()
+        plaintext_padded = decryptor.update(ciphertext)
+        try:
+            plaintext_padded += decryptor.finalize()
+        except ValueError:
+            raise InvalidToken
+        unpadder = padding.PKCS7(algorithms.AES.block_size).unpadder()
+
+        unpadded = unpadder.update(plaintext_padded)
+        try:
+            unpadded += unpadder.finalize()
+        except ValueError:
+            raise InvalidToken
+        return unpadded
