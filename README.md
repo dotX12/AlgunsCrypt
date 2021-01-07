@@ -12,7 +12,6 @@ A private key used by the encryption.
 These two values are concatenated to form a 32 byte value. This 32 byte key is then encoded using Base64 encoding. This encodes the binary quantity as string of ASCII characters. The variant of Base64 used is URL and filename safe, meaning that it doesn't contain any characters that aren't permitted in a URL or a valid filename in any major operating system.
 
 -------------------------
-##### ```Please note that the ~ character is reserved for the delimiter and cannot be encrypted. This character will be ignored.```
 
 ### Supported Languages:
 - Russian
