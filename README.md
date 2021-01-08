@@ -17,6 +17,16 @@ These two values are concatenated to form a 32 byte value. This 32 byte key is t
 - Russian
 - English
 
+-------------------------
+
+### Installation
+
+###### The installation method for this module is shown below.
+
+`pip3 install alguns`
+
+-------------------------
+
 ###### How generate keys?
 ```python
 key = Alguns.generate_key()
