@@ -12,8 +12,8 @@ from cryptography.hazmat.primitives import hashes, padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.hmac import HMAC
 
-from symbols import alphabet, random_letters
-from custom_errors import EmptyMessage, InvalidToken, InvalidReplacement, InvalidKey
+from .symbols import alphabet, random_letters
+from .custom_errors import EmptyMessage, InvalidToken, InvalidReplacement, InvalidKey
 
 
 _MAX_CLOCK_SKEW = 60
@@ -58,12 +58,12 @@ class Alguns(object):
         return crypt_dict
 
     def encrypt(self, data):
-        encrypt_repl = self._e_ncrypt_from_replacement(data)
+        encrypt_repl = self._encrypt_from_replacement(data)
         current_time = int(time.time())
         iv = os.urandom(16)
         return self.__encrypt_from_parts(encrypt_repl.encode(), current_time, iv).decode()
 
-    def _e_ncrypt_from_replacement(self, text):
+    def _encrypt_from_replacement(self, text):
         if text:
             message = ""
             for i in text:
